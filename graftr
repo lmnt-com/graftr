@@ -21,6 +21,7 @@ import re
 import sys
 
 from cmd import Cmd
+from copy import deepcopy
 from pprint import pprint
 
 
@@ -455,6 +456,51 @@ class CheckpointShell(Cmd):
       print(f'rm: cannot remove root directory.')
       return
     self._rm_node(node)
+    self._dirty = True
+
+  def help_cp(self):
+    print('cp - copy value or directory.')
+    print('Syntax: cp SRC DEST')
+
+  def complete_cp(self, text, line, begidx, endidx):
+    m = re.match(r'mv(\s+[^\s]*)(\s+[^\s]*)?\s*$', line)
+    if not m:
+      return []
+    start = m.start(2) if m.group(2) else m.start(1)
+    end = m.end(2) if m.group(2) else m.end(1)
+    return self._complete_path(line[start:end].strip())
+
+  def do_cp(self, arg):
+    m = re.match(r'([^\s]+)\s+([^\s]+)\s*$', arg)
+    if not m:
+      print(f'cp: invalid usage.')
+      return
+
+    src_node = self._tree.resolve(m.group(1), self._cwd)
+    dest = self._tree.resolve_path(m.group(2), self._cwd)
+    dest_node = self._tree.resolve(dest, self._cwd)
+    if src_node is None:
+      print(f'cp: \'{m.group(1)}\' not found.')
+      return
+    if src_node.full_name == dest:
+      return
+    if (dest + '/').startswith(src_node.full_name + '/'):
+      print(f'cp: cannot copy \'{m.group(1)}\' to a subdirectory of itself, \'{m.group(2)}\'.')
+      return
+    if dest_node is not None:
+      if not dest_node.is_directory:
+        print(f'cp: cannot overwrite \'{m.group(2)}\' with \'{m.group(1)}\'.')
+        return
+      clone_node = deepcopy(src_node)
+      dest_node.add_child(clone_node)
+      clone_node.parent = dest_node
+    else:
+      dest_dir = _dirname(dest)
+      dest_name = _basename(dest)
+      clone_node = deepcopy(src_node)
+      clone_node.name = dest_name
+      dest_node = self._tree.insert(dest_dir, clone_node)
+      clone_node.parent = dest_node
     self._dirty = True
 
   def help_save(self):
