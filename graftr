@@ -234,12 +234,19 @@ class CheckpointShell(Cmd):
   def __init__(self, checkpoint_path):
     super().__init__()
     self._path = checkpoint_path
-    self._state = torch.load(checkpoint_path)
+    self._state = self.load_checkpoint_path(checkpoint_path)
     self._tree = Tree(self._state)
     self._cwd = self._tree.root
     self._prevwd = '/'
     self._dirty = False
     print(f'Checkpoint loaded from {checkpoint_path}.')
+
+  def load_checkpoint_path(self, checkpoint_path):
+    if torch.cuda.is_available():
+      return torch.load(checkpoint_path)
+    else:
+      return torch.load(checkpoint_path,
+                        map_location=torch.device('cpu'))
 
   def help_shape(self):
     print('shape - print the tensor shape.')
@@ -409,7 +416,7 @@ class CheckpointShell(Cmd):
       return
     if src_node.full_name == dest:
       return
-    if dest.startswith(src_node.full_name):
+    if (dest + '/').startswith(src_node.full_name + '/'):
       print(f'mv: cannot move \'{m.group(1)}\' to a subdirectory of itself, \'{m.group(2)}\'.')
       return
     if dest_node is not None:
