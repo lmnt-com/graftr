@@ -72,6 +72,16 @@ class _Node:
   def is_directory(self):
     return False
 
+  def clone(self, clone_parent, name=None):
+    parent = self.parent
+    self.parent = None
+    clone = deepcopy(self)
+    clone.parent = clone_parent
+    self.parent = parent
+    if name is not None:
+      clone.name = name
+    return clone
+
 
 class _DirNode(_Node):
   def __init__(self, parent, name):
@@ -246,6 +256,14 @@ class CheckpointShell(Cmd):
     if torch.cuda.is_available():
       return torch.load(checkpoint_path)
     else:
+      print(f'WARNING: Your environment is cpu-only. '
+            f'Do you want to load parameters in \'device:cpu\' (y/N)? ', end='', flush=True)
+      line = sys.stdin.readline().strip().lower()
+      if line != 'y' and line != 'yes':
+        # raise RuntimeError and Trackback to show error and terminate command-line.
+        return torch.load(checkpoint_path)
+      print("")
+      self._dirty = True
       return torch.load(checkpoint_path,
                         map_location=torch.device('cpu'))
 
@@ -491,14 +509,12 @@ class CheckpointShell(Cmd):
       if not dest_node.is_directory:
         print(f'cp: cannot overwrite \'{m.group(2)}\' with \'{m.group(1)}\'.')
         return
-      clone_node = deepcopy(src_node)
+      clone_node = src_node.clone(clone_parent=dest_node)
       dest_node.add_child(clone_node)
-      clone_node.parent = dest_node
     else:
       dest_dir = _dirname(dest)
       dest_name = _basename(dest)
-      clone_node = deepcopy(src_node)
-      clone_node.name = dest_name
+      clone_node = src_node.clone(clone_parent=None, name=dest_name)
       dest_node = self._tree.insert(dest_dir, clone_node)
       clone_node.parent = dest_node
     self._dirty = True
