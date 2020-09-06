@@ -21,6 +21,7 @@ import re
 import sys
 
 from cmd import Cmd
+from copy import deepcopy
 from pprint import pprint
 
 
@@ -70,6 +71,16 @@ class _Node:
   @property
   def is_directory(self):
     return False
+
+  def clone(self, clone_parent, name=None):
+    parent = self.parent
+    self.parent = None
+    clone = deepcopy(self)
+    clone.parent = clone_parent
+    self.parent = parent
+    if name is not None:
+      clone.name = name
+    return clone
 
 
 class _DirNode(_Node):
@@ -234,12 +245,27 @@ class CheckpointShell(Cmd):
   def __init__(self, checkpoint_path):
     super().__init__()
     self._path = checkpoint_path
-    self._state = torch.load(checkpoint_path)
+    self._state = self.load_checkpoint_path(checkpoint_path)
     self._tree = Tree(self._state)
     self._cwd = self._tree.root
     self._prevwd = '/'
     self._dirty = False
     print(f'Checkpoint loaded from {checkpoint_path}.')
+
+  def load_checkpoint_path(self, checkpoint_path):
+    if torch.cuda.is_available():
+      return torch.load(checkpoint_path)
+    else:
+      print(f'WARNING: Your environment is cpu-only. '
+            f'Do you want to load parameters in \'device:cpu\' (y/N)? ', end='', flush=True)
+      line = sys.stdin.readline().strip().lower()
+      if line != 'y' and line != 'yes':
+        # raise RuntimeError and Trackback to show error and terminate command-line.
+        return torch.load(checkpoint_path)
+      print("")
+      self._dirty = True
+      return torch.load(checkpoint_path,
+                        map_location=torch.device('cpu'))
 
   def help_shape(self):
     print('shape - print the tensor shape.')
@@ -409,7 +435,7 @@ class CheckpointShell(Cmd):
       return
     if src_node.full_name == dest:
       return
-    if dest.startswith(src_node.full_name):
+    if (dest + '/').startswith(src_node.full_name + '/'):
       print(f'mv: cannot move \'{m.group(1)}\' to a subdirectory of itself, \'{m.group(2)}\'.')
       return
     if dest_node is not None:
@@ -448,6 +474,49 @@ class CheckpointShell(Cmd):
       print(f'rm: cannot remove root directory.')
       return
     self._rm_node(node)
+    self._dirty = True
+
+  def help_cp(self):
+    print('cp - copy value or directory.')
+    print('Syntax: cp SRC DEST')
+
+  def complete_cp(self, text, line, begidx, endidx):
+    m = re.match(r'mv(\s+[^\s]*)(\s+[^\s]*)?\s*$', line)
+    if not m:
+      return []
+    start = m.start(2) if m.group(2) else m.start(1)
+    end = m.end(2) if m.group(2) else m.end(1)
+    return self._complete_path(line[start:end].strip())
+
+  def do_cp(self, arg):
+    m = re.match(r'([^\s]+)\s+([^\s]+)\s*$', arg)
+    if not m:
+      print(f'cp: invalid usage.')
+      return
+
+    src_node = self._tree.resolve(m.group(1), self._cwd)
+    dest = self._tree.resolve_path(m.group(2), self._cwd)
+    dest_node = self._tree.resolve(dest, self._cwd)
+    if src_node is None:
+      print(f'cp: \'{m.group(1)}\' not found.')
+      return
+    if src_node.full_name == dest:
+      return
+    if (dest + '/').startswith(src_node.full_name + '/'):
+      print(f'cp: cannot copy \'{m.group(1)}\' to a subdirectory of itself, \'{m.group(2)}\'.')
+      return
+    if dest_node is not None:
+      if not dest_node.is_directory:
+        print(f'cp: cannot overwrite \'{m.group(2)}\' with \'{m.group(1)}\'.')
+        return
+      clone_node = src_node.clone(clone_parent=dest_node)
+      dest_node.add_child(clone_node)
+    else:
+      dest_dir = _dirname(dest)
+      dest_name = _basename(dest)
+      clone_node = src_node.clone(clone_parent=None, name=dest_name)
+      dest_node = self._tree.insert(dest_dir, clone_node)
+      clone_node.parent = dest_node
     self._dirty = True
 
   def help_save(self):
