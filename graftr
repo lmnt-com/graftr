@@ -227,10 +227,6 @@ class CheckpointShell(Cmd):
   # Hack to handle CTRL+C. Shamelessly stolen from StackOverflow:
   # https://stackoverflow.com/questions/8813291/better-handling-of-keyboardinterrupt-in-cmd-cmd-command-line-interpreter
   def cmdloop(self, intro=None):
-    if os.path.islink(self._path):
-      print(f'It is unsafe to explore symbolic links.')
-      return
-
     print(self.intro)
     while True:
       try:
@@ -244,6 +240,9 @@ class CheckpointShell(Cmd):
 
   def __init__(self, checkpoint_path):
     super().__init__()
+    if os.path.islink(checkpoint_path):
+      checkpoint_path = os.path.realpath(checkpoint_path)
+      print(f'WARNING: following symbolic link to \'{checkpoint_path}\'.')
     self._path = checkpoint_path
     self._state = self.load_checkpoint_path(checkpoint_path)
     self._tree = Tree(self._state)
