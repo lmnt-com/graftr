@@ -31,6 +31,7 @@ All changes are kept in-memory until you're ready to write them back to your che
 - `pwd` - print working directory.
 - `ls` - list directory contents.
 - `cat` - print the contents of a value or directory.
+- `cp` - copy value or directory.
 - `mv` - move/rename value or directory.
 - `rm` - remove value or directory.
 - `parameters` - print the number of model parameters under a directory.
