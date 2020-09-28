@@ -561,6 +561,32 @@ class CheckpointShell(Cmd):
     print('^D - exits the shell.')
     print('Syntax: ^D')
 
+  def default(self, arg):
+    eval_globals = { 'np': np, 'torch': torch }
+    eval_locals = dict()
+    for node in self._cwd.children:
+      if node.is_directory:
+        continue
+      if isinstance(node.value, torch.Tensor):
+        eval_locals[node.name] = node.value.clone()
+      else:
+        eval_locals[node.name] = node.value
+    try:
+      value = eval(compile(arg, '<string>', 'single'), eval_globals, eval_locals)
+      if value is not None:
+        print(value)
+      for key, value in eval_locals.items():
+        child = self._cwd.child(key)
+        if not child:
+          raise NameError(f'name \'{key}\' is not defined.')
+        if isinstance(child.value, torch.Tensor):
+          self._dirty = self._dirty or id(child.value) != id(value) or torch.any(child.value != value)
+        else:
+          self._dirty = self._dirty or id(child.value) != id(value) or child.value != value
+        child.value = value
+    except Exception as e:
+      print(f'{e.__class__.__name__}: {e}')
+
   def do_EOF(self, arg):
     if not arg:
       print('exit')
@@ -592,4 +618,5 @@ if __name__ == '__main__':
     print(f'Usage: {sys.argv[0]} CHECKPOINT_PATH')
   else:
     import torch
-    CheckpointShell(sys.argv[1]).cmdloop()
+    with torch.no_grad():
+      CheckpointShell(sys.argv[1]).cmdloop()
