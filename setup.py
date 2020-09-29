@@ -2,7 +2,7 @@ from setuptools import setup
 
 
 NAME = 'graftr'
-VERSION = '0.1.1'
+VERSION = '0.1.2'
 DESCRIPTION = 'graftr: an interactive shell to view and edit PyTorch checkpoints.'
 AUTHOR = 'LMNT, Inc.'
 AUTHOR_EMAIL = 'graftr@lmnt.com'
